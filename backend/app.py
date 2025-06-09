@@ -7,13 +7,13 @@ from dotenv import load_dotenv
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime
 
-# Load environment variables from .env
+# Load environment variables
 load_dotenv()
 
 # Initialize app and config
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.getenv("SECRET_KEY", "dev")
-app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv("DATABASE_URL", "sqlite:///app.db")
+app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv("DATABASE_URL", "sqlite:///instance/app.db")
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 # Initialize extensions
@@ -22,9 +22,10 @@ db.init_app(app)
 migrate = Migrate(app, db)
 CORS(app)
 
-# Import models after initializing db
+# Import models
 from models import User, Group, Membership, Transaction, Savings, Notification, FAQ
 
+# ---------------- ROOT ----------------
 @app.route('/')
 def home():
     return jsonify({"message": "Welcome to Proxima Centauri API"})
@@ -59,7 +60,13 @@ def login():
 @app.route('/api/groups', methods=['GET'])
 def get_groups():
     groups = Group.query.all()
-    return jsonify([{ "id": group.id, "name": group.name, "members": [m.user.name for m in group.members] } for group in groups])
+    return jsonify([
+        {
+            "id": group.id,
+            "name": group.name,
+            "members": [m.user.name for m in group.members]
+        } for group in groups
+    ])
 
 @app.route('/api/groups', methods=['POST'])
 def create_group():
@@ -77,18 +84,45 @@ def create_group():
 
     return jsonify({"message": "Group created", "group_id": group.id}), 201
 
+@app.route('/api/groups/summary', methods=['GET'])
+def group_summary():
+    groups = Group.query.all()
+    return jsonify([
+        {
+            "id": g.id,
+            "name": g.name,
+            "member_count": len(g.members)
+        } for g in groups
+    ])
+
 # ---------------- TRANSACTIONS ----------------
 @app.route('/api/transactions', methods=['GET'])
 def get_transactions():
     transactions = Transaction.query.all()
-    return jsonify([{
-        "id": t.id,
-        "type": t.type,
-        "amount": t.amount,
-        "date": t.date.isoformat(),
-        "user": t.user.name,
-        "group": t.group.name
-    } for t in transactions])
+    return jsonify([
+        {
+            "id": t.id,
+            "type": t.type,
+            "amount": t.amount,
+            "date": t.date.isoformat(),
+            "user": t.user.name,
+            "group": t.group.name
+        } for t in transactions
+    ])
+
+@app.route('/api/transactions/recent', methods=['GET'])
+def recent_transactions():
+    transactions = Transaction.query.order_by(Transaction.date.desc()).limit(5).all()
+    return jsonify([
+        {
+            "id": t.id,
+            "type": t.type,
+            "amount": t.amount,
+            "date": t.date.isoformat(),
+            "user": t.user.name,
+            "group": t.group.name
+        } for t in transactions
+    ])
 
 @app.route('/api/transactions', methods=['POST'])
 def add_transaction():
@@ -107,14 +141,63 @@ def add_transaction():
 # ---------------- SAVINGS ----------------
 @app.route('/api/savings', methods=['GET'])
 def view_savings():
-    # TODO: Implement real savings logic
-    return jsonify({"message": "Savings view not yet implemented"})
+    savings = Savings.query.all()
+    return jsonify([
+        {
+            "id": s.id,
+            "amount": s.amount,
+            "interest": s.interest,
+            "dividends": s.dividends,
+            "user": s.user.name,
+            "group": s.group.name
+        } for s in savings
+    ])
+
+@app.route('/api/savings', methods=['POST'])
+def add_savings():
+    data = request.get_json()
+    saving = Savings(
+        user_id=data.get("user_id"),
+        group_id=data.get("group_id"),
+        amount=data.get("amount"),
+        interest=data.get("interest", 0.0),
+        dividends=data.get("dividends", 0.0)
+    )
+    db.session.add(saving)
+    db.session.commit()
+    return jsonify({"message": "Saving record added", "id": saving.id}), 201
+
+@app.route('/api/finance/overview', methods=['GET'])
+def finance_overview():
+    total_savings = sum(s.amount for s in Savings.query.all())
+    total_transactions = sum(t.amount for t in Transaction.query.all())
+
+    return jsonify({
+        "total_savings": total_savings,
+        "total_transactions": total_transactions,
+        "net_balance": total_savings - total_transactions
+    })
+
+# ---------------- MEMBERS ----------------
+@app.route('/api/members', methods=['GET'])
+def get_members():
+    members = Membership.query.all()
+    return jsonify([
+        {
+            "id": m.id,
+            "user": m.user.name,
+            "group": m.group.name,
+            "role": m.role
+        } for m in members
+    ])
 
 # ---------------- REMINDERS ----------------
 @app.route('/api/reminders', methods=['GET'])
 def get_reminders():
-    # TODO: Implement reminders/notifications retrieval
-    return jsonify({"message": "Reminders not yet implemented"})
+    return jsonify([
+        {"id": 1, "text": "Weekly contribution due"},
+        {"id": 2, "text": "Loan repayment deadline"}
+    ])
 
 # ---------------- FAQ / HELP ----------------
 @app.route('/api/help', methods=['GET'])
@@ -122,6 +205,6 @@ def get_help():
     faqs = FAQ.query.all()
     return jsonify([{"question": f.question, "answer": f.answer} for f in faqs])
 
-# ---------------- CLI Entrypoint ----------------
+# ---------------- ENTRYPOINT ----------------
 if __name__ == '__main__':
     app.run(debug=True)

@@ -6,19 +6,26 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, 'src'), // allows cleaner imports like @/components/MyComponent
+      '@': path.resolve(__dirname, 'src'), // Cleaner imports like @/components/...
     },
   },
   server: {
-    port: 5173,             // You can change this if needed
-    open: true,             // Automatically opens browser on dev server start
-    strictPort: true,       // Fail if port is already in use
-    cors: true,             // Enables CORS (in case frontend calls a separate backend)
+    port: 5173,
+    open: true,
+    strictPort: true,
+    cors: true,
+    proxy: {
+      '/api': {
+        target: 'http://localhost:5000', // ✅ Flask backend base URL
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api/, '/api'), // preserves /api prefix
+      },
+    },
   },
   build: {
     outDir: 'dist',
-    sourcemap: true,        // Enable sourcemaps for debugging in production
-    assetsInlineLimit: 8192 // Inline files < 8kb (helps with small icons, SVGs, etc.)
+    sourcemap: true,
+    assetsInlineLimit: 8192,
   },
-  envPrefix: 'VITE_',        // Only expose env vars starting with VITE_ to the client
+  envPrefix: 'VITE_',
 });
